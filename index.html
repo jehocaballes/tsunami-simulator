@@ -1,0 +1,2669 @@
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tsunami Generation Simulator</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body{
+  font-family:'Segoe UI',Arial,sans-serif;
+  background:#0a1828;
+  color:#ddeeff;
+  height:100vh;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+}
+#header{
+  padding:6px 16px;
+  background:#081520;
+  border-bottom:2px solid #1a3a5a;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-shrink:0;
+}
+#header h1{
+  font-size:1rem;
+  font-weight:700;
+  color:#5cc8ff;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+}
+#header .sub{
+  font-size:0.6rem;
+  color:#4a7090;
+  letter-spacing:1px;
+}
+#info-panel{
+  font-size:0.7rem;
+  font-family:monospace;
+  color:#4a7090;
+  text-align:right;
+  line-height:1.75;
+}
+#info-panel span{ color:#5cc8ff; font-weight:bold; }
+#info-panel .wh{ color:#ffd040; }
+#canvas-container{ flex:1; position:relative; overflow:hidden; }
+canvas{ display:block; width:100%; height:100%; }
+
+#controls{
+  background:#060e1a;
+  border-top:2px solid #1a3a5a;
+  padding:8px 16px;
+  flex-shrink:0;
+  display:flex;
+  align-items:center;
+  gap:16px;
+  flex-wrap:wrap;
+}
+.clabel{
+  font-size:0.58rem;
+  letter-spacing:2px;
+  text-transform:uppercase;
+  color:#5cc8ff;
+  font-weight:700;
+  margin-bottom:4px;
+}
+#fault-tiles{ display:flex; gap:6px; }
+.fault-tile{
+  display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:6px 10px;
+  border:2px solid #1a3060;
+  border-radius:8px;
+  cursor:pointer;
+  background:rgba(15,30,65,0.7);
+  transition:all 0.18s;
+  min-width:92px;
+  user-select:none;
+}
+.fault-tile:hover{ border-color:#2a5090; background:rgba(25,50,100,0.8); }
+.fault-tile.active{
+  border-color:#5cc8ff;
+  background:rgba(30,70,150,0.6);
+  box-shadow:0 0 12px rgba(92,200,255,0.25);
+}
+.fault-tile img{ width:56px; height:56px; object-fit:contain; }
+.fault-tile .fallback{ width:56px; height:56px; display:none; align-items:center; justify-content:center; font-size:28px; }
+.fault-tile .tlabel{
+  font-size:0.58rem;
+  letter-spacing:1px;
+  text-transform:uppercase;
+  color:#8ab0d0;
+  font-weight:700;
+  text-align:center;
+}
+.fault-tile.active .tlabel{ color:#5cc8ff; }
+
+.srow{ display:flex; align-items:center; gap:8px; }
+input[type=range]{
+  -webkit-appearance:none;
+  width:160px; height:4px;
+  background:linear-gradient(to right,#5cc8ff var(--p,50%),#1a3060 var(--p,50%));
+  border-radius:2px;
+  outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:14px; height:14px;
+  border-radius:50%;
+  background:#5cc8ff;
+  cursor:pointer;
+  box-shadow:0 0 5px #5cc8ff88;
+}
+.sval{
+  font-family:monospace;
+  font-size:0.78rem;
+  color:#5cc8ff;
+  min-width:44px;
+}
+button{
+  padding:8px 18px;
+  border-radius:6px;
+  font-size:0.8rem;
+  font-weight:700;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  cursor:pointer;
+  transition:all 0.18s;
+}
+#btn-trigger{ border:2px solid #5cc8ff; background:rgba(92,200,255,0.12); color:#5cc8ff; }
+#btn-trigger:hover:not(:disabled){ background:rgba(92,200,255,0.28); box-shadow:0 0 12px #5cc8ff44; }
+#btn-trigger:disabled{ opacity:0.35; cursor:not-allowed; }
+#btn-reset{ border:2px solid #ff5555; background:rgba(255,85,85,0.1); color:#ff5555; }
+#btn-reset:hover{ background:rgba(255,85,85,0.25); }
+
+#error-overlay{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.88);
+  z-index:9999;
+  align-items:center;
+  justify-content:center;
+  flex-direction:column;
+  gap:10px;
+  font-family:monospace;
+  color:#ff5555;
+  font-size:1rem;
+  text-align:center;
+  padding:20px;
+}
+#error-overlay.show{ display:flex; }
+#error-overlay pre{
+  font-size:0.7rem;
+  color:#ff8888;
+  max-width:760px;
+  white-space:pre-wrap;
+}
+</style>
+</head>
+
+<body>
+<div id="header">
+  <div>
+    <div class="sub">CLASSROOM SIMULATION</div>
+    <h1>Tsunami Generation &amp; Shoaling Simulator</h1>
+  </div>
+  <div id="info-panel">
+    <div>FAULT TYPE: <span id="i-fault">REVERSE FAULT</span></div>
+    <div>SLIP: <span id="i-slip">5.0 m</span></div>
+    <div>PEAK WAVE HEIGHT: <span class="wh" id="i-wave">0.0 m</span></div>
+  </div>
+</div>
+
+<div id="canvas-container"><canvas id="c" width="1759" height="810"></canvas></div>
+
+<div id="controls">
+  <div>
+    <div class="clabel">Fault Type</div>
+    <div id="fault-tiles">
+      <div class="fault-tile active" data-fault="reverse">
+        <img src="reverse.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="fallback">⬆</div>
+        <div class="tlabel">reverse fault</div>
+      </div>
+      <div class="fault-tile" data-fault="normal">
+        <img src="normal.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="fallback">↕</div>
+        <div class="tlabel">Normal Fault</div>
+      </div>
+      <div class="fault-tile" data-fault="strike-slip">
+        <img src="strike-slip.png" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+        <div class="fallback">↔</div>
+        <div class="tlabel">Strike-Slip</div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div class="clabel">Slip Amount</div>
+    <div class="srow">
+      <input type="range" id="slip" min="1" max="10" step="0.5" value="5" style="--p: 44.4%;">
+      <span class="sval" id="sval">5.0 m</span>
+    </div>
+  </div>
+
+  <button id="btn-trigger">⚡ Trigger Quake</button>
+  <button id="btn-reset">↺ Reset</button>
+  <button id="btn-bake">⬇ Bake HTML</button>
+</div>
+
+<div id="error-overlay"><div>⚠ SIMULATION ERROR</div><pre id="errmsg"></pre></div>
+
+<script>
+(function(){
+"use strict";
+try{
+
+// =====================================================
+// CANVAS + LAYOUT
+// =====================================================
+var CV  = document.getElementById("c");
+var ctx = CV.getContext("2d");
+var W=1, H=1;
+
+var SEA_Y=0, FLOOR_Y=0, PPM=0;
+
+// Visual scale (meters)
+var WAVE_MAX_M = 20.0;
+var TOP_Y_FRAC = 0.06;
+
+// Physics depth (meters) and draw multiplier
+var DEPTH_MAX_M = 6.0;
+var DEPTH_DRAW_MULT = 1.5;
+
+function layout(){
+  W = CV.width; H = CV.height;
+
+  var TOP_Y = H * TOP_Y_FRAC;
+  SEA_Y = H * 0.45;
+
+  PPM = (SEA_Y - TOP_Y) / WAVE_MAX_M;
+  FLOOR_Y = SEA_Y + (DEPTH_MAX_M * DEPTH_DRAW_MULT) * PPM;
+
+  window.__DEPTH_DRAW_MULT = DEPTH_DRAW_MULT;
+}
+
+// =====================================================
+// PLATE B MANUAL CARVE / EDIT MODE (with saving/loading)
+// =====================================================
+// Press E to toggle edit mode.
+// While ON:
+//  - Click = add point
+//  - Drag a point = move
+//  - Backspace/Delete = remove last point
+//  - C = clear points
+//  - Enter = print points to console (absolute px)
+//  - S = save shape (normalized) to localStorage
+//  - L = load saved shape from localStorage
+//  - Esc = exit edit mode
+var EDIT_PLATE_B = false;
+var plateBPoints = [];
+
+// Optional baked Plate B default (normalized 0..1). If present, this overrides the default points.
+// This is written into the downloaded HTML when you press P / click Bake HTML.
+// Example: var PLATE_B_BAKED_NORM = [{x:0.1,y:0.2}, ...];
+var PLATE_B_BAKED_NORM;
+
+// Default Plate B points (absolute px from your last carved shape).
+// These will be used if no saved shape exists in localStorage.
+var PLATE_B_DEFAULT_POINTS = [
+  {x:425.0, y:539.0},
+  {x:476.0, y:543.0},
+  {x:533.0, y:560.0},
+  {x:571.0, y:573.0},
+  {x:782.0, y:577.0},
+  {x:1358.0, y:577.0},
+  {x:1753.0, y:578.0},
+  {x:1755.0, y:366.0},
+  {x:1575.0, y:369.0},
+  {x:1508.0, y:386.0},
+  {x:1451.0, y:410.0},
+  {x:1397.0, y:432.0},
+  {x:1318.0, y:434.0},
+  {x:1182.0, y:435.0},
+  {x:1077.0, y:435.0},
+  {x:1049.0, y:442.0},
+  {x:1035.0, y:463.0},
+  {x:912.0, y:497.0},
+  {x:811.0, y:506.0},
+  {x:709.0, y:502.0},
+  {x:579.0, y:507.0},
+  {x:511.0, y:513.0},
+  {x:461.0, y:517.0}
+];
+
+function applyDefaultPlateBPoints(){
+  // Prefer baked normalized points if present (resolution-independent).
+  if(typeof PLATE_B_BAKED_NORM !== 'undefined' && Array.isArray(PLATE_B_BAKED_NORM) && PLATE_B_BAKED_NORM.length >= 3){
+    plateBPoints = PLATE_B_BAKED_NORM.map(function(p){
+      return { x: p.x * W, y: p.y * H };
+    });
+    return;
+  }
+
+  // Convert default absolute pixels into current canvas size.
+  // The defaults were captured from a prior canvas; we scale them to current W/H.
+  // If W/H match the capture, this is 1:1.
+  // NOTE: if you change the canvas aspect a lot, re-carve and re-save.
+  var maxX = 0, maxY = 0;
+  for(var i=0;i<PLATE_B_DEFAULT_POINTS.length;i++){
+    if(PLATE_B_DEFAULT_POINTS[i].x > maxX) maxX = PLATE_B_DEFAULT_POINTS[i].x;
+    if(PLATE_B_DEFAULT_POINTS[i].y > maxY) maxY = PLATE_B_DEFAULT_POINTS[i].y;
+  }
+  // Use capture bounds as implicit reference size.
+  var refW = Math.max(1, maxX);
+  var refH = Math.max(1, maxY);
+  plateBPoints = PLATE_B_DEFAULT_POINTS.map(function(p){
+    return { x: (p.x / refW) * W, y: (p.y / refH) * H };
+  });
+}
+
+// Auto-save to localStorage shortly after edits (no manual copy/paste)
+var _autoSaveT = null;
+function scheduleAutoSave(){
+  if(_autoSaveT) clearTimeout(_autoSaveT);
+  _autoSaveT = setTimeout(function(){
+    _autoSaveT = null;
+    try{ savePlateBToStorage(); }catch(e){}
+  }, 180);
+}
+
+function downloadBakedHTML(){
+  if(!plateBPoints || plateBPoints.length < 3){
+    alert('Nothing to bake yet. Add at least 3 points.');
+    return;
+  }
+  // Bake as normalized points so it is resolution-independent.
+  var bakedNorm = plateBPoints.map(function(p){ return {x:p.x/W, y:p.y/H}; });
+
+  var html = document.documentElement.outerHTML;
+
+  // Insert or replace a baked default (normalized) variable.
+  var bakedBlock = "// BAKED DEFAULT (normalized) - generated by Download HTML\n" +
+    "var PLATE_B_BAKED_NORM = " + JSON.stringify(bakedNorm) + ";\n";
+
+  if(html.indexOf('var PLATE_B_BAKED_NORM') !== -1){
+    html = html.replace(/\/\/ BAKED DEFAULT \(normalized\)[\s\S]*?\nvar PLATE_B_BAKED_NORM\s*=\s*[\s\S]*?;\n/, bakedBlock);
+    // Fallback in case the header comment was removed
+    if(html.indexOf('var PLATE_B_BAKED_NORM') === -1){
+      html = html.replace(/var PLATE_B_BAKED_NORM\s*=\s*[\s\S]*?;\n/, bakedBlock);
+    }
+  } else {
+    // Place it right before the PLATE_B_DEFAULT_POINTS declaration
+    html = html.replace(/var PLATE_B_DEFAULT_POINTS\s*=\s*\[/, bakedBlock + "\n" + "var PLATE_B_DEFAULT_POINTS = [");
+  }
+
+  var blob = new Blob([html], {type:'text/html'});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'index_baked_plateB.html';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){
+    URL.revokeObjectURL(a.href);
+    a.remove();
+  }, 200);
+}
+// Bake shortcuts
+var bakeBtn = document.getElementById('btn-bake');
+if(bakeBtn){
+  bakeBtn.addEventListener('click', function(){
+    downloadBakedHTML();
+  });
+}
+
+// Allow P to bake even when not in edit mode (unless focused on an input).
+window.addEventListener('keydown', function(ev){
+  var k = ev.key;
+  if(k === 'p' || k === 'P'){
+    var ae = document.activeElement;
+    var tag = ae && ae.tagName ? ae.tagName.toLowerCase() : '';
+    if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    // If edit mode handler already consumed it, that's fine.
+    ev.preventDefault();
+    downloadBakedHTML();
+  }
+});
+
+var PLATE_B_STORE_KEY = 'tsunami_plate_b_norm_v1';
+
+function savePlateBToStorage(){
+  if(!plateBPoints || plateBPoints.length < 3){
+    // Silent no-op for autosave
+    return;
+  }
+  var norm = plateBPoints.map(function(p){
+    return { x: p.x / W, y: p.y / H };
+  });
+  try{
+    localStorage.setItem(PLATE_B_STORE_KEY, JSON.stringify(norm));
+  }catch(e){
+    // ignore
+  }
+}
+
+function loadPlateBFromStorage(){
+  try{
+    var raw = localStorage.getItem(PLATE_B_STORE_KEY);
+    if(!raw){
+      // No saved shape yet -> use baked/default points.
+      applyDefaultPlateBPoints();
+      return true;
+    }
+    var norm = JSON.parse(raw);
+    if(!Array.isArray(norm) || norm.length < 3){
+      alert('Saved data is invalid.');
+      return false;
+    }
+    plateBPoints = norm.map(function(p){
+      return { x: p.x * W, y: p.y * H };
+    });
+    return true;
+  }catch(e){
+    alert('Load failed: ' + (e && e.message ? e.message : e));
+    return false;
+  }
+}
+var dragIndex = -1;
+var DRAG_R = 10;
+
+function _dist2(ax,ay,bx,by){ var dx=ax-bx, dy=ay-by; return dx*dx+dy*dy; }
+
+function canvasPos(ev){
+  var r = CV.getBoundingClientRect();
+  return {
+    x: (ev.clientX - r.left) * (CV.width / r.width),
+    y: (ev.clientY - r.top)  * (CV.height / r.height)
+  };
+}
+
+function printPlateBPoints(){
+  var s = "var PLATE_B_POINTS = [\n" +
+    plateBPoints.map(function(p){
+      return "  {x:" + p.x.toFixed(1) + ", y:" + p.y.toFixed(1) + "}";
+    }).join(",\n") +
+    "\n];";
+  console.log(s);
+  alert("Plate B points printed to console.\nOpen DevTools Console to copy.\nTip: Press S to save the shape.");
+}
+
+CV.addEventListener("mousedown", function(ev){
+  if(!EDIT_PLATE_B) return;
+  var p = canvasPos(ev);
+
+  dragIndex = -1;
+  for(var i=0;i<plateBPoints.length;i++){
+    if(_dist2(p.x,p.y, plateBPoints[i].x, plateBPoints[i].y) <= DRAG_R*DRAG_R){
+      dragIndex = i;
+      return;
+    }
+  }
+  plateBPoints.push({x:p.x, y:p.y});
+  scheduleAutoSave();
+});
+
+CV.addEventListener("mousemove", function(ev){
+  if(!EDIT_PLATE_B) return;
+  if(dragIndex < 0) return;
+  var p = canvasPos(ev);
+  plateBPoints[dragIndex].x = p.x;
+  plateBPoints[dragIndex].y = p.y;
+  scheduleAutoSave();
+});
+
+window.addEventListener("mouseup", function(){
+  dragIndex = -1;
+});
+
+window.addEventListener("keydown", function(ev){
+  if(ev.key === "e" || ev.key === "E"){
+    EDIT_PLATE_B = !EDIT_PLATE_B;
+    dragIndex = -1;
+    if(EDIT_PLATE_B){
+      // On entering edit mode, only start with saved shape if present, else empty
+      if(!plateBPoints || plateBPoints.length < 3){
+        loadPlateBFromStorage();
+        if(!plateBPoints || plateBPoints.length < 3){
+          plateBPoints = [];
+        }
+      }
+      alert(
+        "Plate B Edit Mode ON\n\n" +
+        "• Click = add point\n" +
+        "• Drag point = move\n" +
+        "• Backspace/Delete = remove last point\n" +
+        "• C = clear\n" +
+        "• S = save\n" +
+        "• L = load\n" +
+        "• Enter = print points to console\n" +
+        "• P = download HTML (bake shape permanently)\n" +
+        "• Esc = exit"
+      );
+    }
+    return;
+  }
+
+  if(!EDIT_PLATE_B) return;
+
+  if(ev.key === "Escape"){
+    EDIT_PLATE_B = false;
+    dragIndex = -1;
+  } else if(ev.key === "Backspace" || ev.key === "Delete"){
+    plateBPoints.pop();
+    scheduleAutoSave();
+    ev.preventDefault();
+  } else if(ev.key === "Enter"){
+    printPlateBPoints();
+  } else if(ev.key === "P" || ev.key === "p"){
+    // Permanently bake the current shape into a downloadable HTML file.
+    downloadBakedHTML();
+  } else if(ev.key === "s" || ev.key === "S"){
+    savePlateBToStorage();
+  } else if(ev.key === "l" || ev.key === "L"){
+    loadPlateBFromStorage();
+  } else if(ev.key === "c" || ev.key === "C"){
+    plateBPoints.length = 0;
+    scheduleAutoSave();
+    try{ localStorage.removeItem(PLATE_B_STORE_KEY); }catch(e){}
+  }
+});
+
+// =====================================================
+// BATHYMETRY (shoaling earlier)
+// =====================================================
+var N = 800;
+var depth = new Float64Array(N);
+
+// Two-tier seafloor: deep -> curve -> shelf -> curve -> shore
+var DEEP_END      = 0.50;
+var TIER1_END     = 0.60;
+var SHELF_END     = 0.80;
+var TIER2_END     = 0.90;
+var MID_DEPTH_M   = DEPTH_MAX_M * 0.5;
+
+// Shoaling begins at shelf (2nd tier start)
+var SHOAL_START = TIER1_END;
+var SHOAL_END   = TIER2_END;
+var _landFrac   = TIER2_END;
+
+function ss(t){ t=t<0?0:t>1?1:t; return t*t*(3-2*t); }
+
+function firstLand(){
+  for(var i=0;i<N;i++) if(depth[i] <= 0) return i;
+  return N-1;
+}
+function cx(i){ return (i/(N-1))*W; }
+
+function buildBathy(){
+  for(var i=0;i<N;i++){
+    var x = i/(N-1);
+    var d;
+
+    if(x < DEEP_END){
+      d = DEPTH_MAX_M;
+    } else if(x < TIER1_END){
+      var t1 = (x - DEEP_END) / (TIER1_END - DEEP_END);
+      d = DEPTH_MAX_M + (MID_DEPTH_M - DEPTH_MAX_M) * ss(t1);
+    } else if(x < SHELF_END){
+      d = MID_DEPTH_M;
+    } else if(x < TIER2_END){
+      var t2 = (x - SHELF_END) / (TIER2_END - SHELF_END);
+      d = MID_DEPTH_M * (1 - ss(t2));
+    } else {
+      d = 0;
+    }
+
+    depth[i] = (d < 0.02) ? 0 : d;
+  }
+
+  _landFrac = firstLand()/(N-1);
+}
+
+function terrY(i){
+  var d = depth[i];
+  if(d > 0){
+    var dm = (window.__DEPTH_DRAW_MULT || 1.0);
+    return SEA_Y + d * PPM * dm;
+  }
+  return SEA_Y;
+}
+function waveY(i){ return SEA_Y - eta[i]*PPM; }
+
+// =====================================================
+// TSUNAMI SHOALING (Green's Law)
+// =====================================================
+function shoaledAmplitude(A0, h0, h, opt){
+  opt = opt || {};
+  var minDepth = (opt.minDepth != null) ? opt.minDepth : 0.6;
+  var maxAmp   = (opt.maxAmp   != null) ? opt.maxAmp   : 80.0;
+  var hh = Math.max(h, minDepth);
+  var factor = Math.pow(h0 / hh, 0.25);
+  var A = A0 * factor;
+  return Math.min(A, maxAmp);
+}
+
+// =====================================================
+// WAVE: SINGLE PULSE -> TRANSITION INTO SINGLE RUNUP
+// =====================================================
+var eta = new Float64Array(N);
+var etaLand = new Float64Array(N);
+
+var pulse = {
+  active:false,
+  posF:0,
+  amp0:0,
+
+  // spawn ramp (prevents abrupt pop-in)
+  spawnT:0,        // seconds since spawn
+  spawnDur:0.8,    // seconds to ramp to full amplitude
+
+  // bipolar drawdown->uplift for normal fault
+  bipolar:false,
+  bipolarDur:0.9,      // seconds for drawdown->uplift transition
+  bipolarHold:0.15,    // seconds to linger near max drawdown
+
+  h0:DEPTH_MAX_M,
+  sigF:0.045,
+  done:false,
+  runup:false,
+  runupPos:0,
+  runupAmp:0,
+  runupAmp0:0
+};
+
+// Wave origin (fraction of the domain 0..1). Set this to sit above the fault/trench.
+// Move slightly right to match the visual fault position.
+var WAVE_ORIGIN_FRAC = 0.22;
+
+var SIM_SPEED = 0.055;
+var SHOAL_BLEND_POWER = 0.5;
+var SHOAL_MAX_AMP     = 80.0;
+var RUNUP_SPEED = 0.040;
+var RUNUP_DECAY = 1.10;
+
+function resetPulse(){
+  pulse.active=false;
+  pulse.done=false;
+  pulse.runup=false;
+  pulse.posF=0;
+
+  // reset spawn ramp
+  pulse.spawnT=0;
+  pulse.spawnDur=0.8;
+  pulse.bipolar = false;
+  pulse.bipolarDur = 0.9;
+  pulse.bipolarHold = 0.15;
+
+  pulse.runupPos=0;
+  pulse.runupAmp=0;
+  pulse.runupAmp0=0;
+  eta.fill(0);
+  etaLand.fill(0);
+}
+
+function injectUplift(mag){
+  pulse.active = true;
+  pulse.done   = false;
+  pulse.posF   = WAVE_ORIGIN_FRAC;
+  pulse.runup  = false;
+  pulse.runupPos = 0;
+  pulse.runupAmp = 0;
+  pulse.runupAmp0 = 0;
+
+  // spawn ramp
+  pulse.spawnT = 0;
+  pulse.spawnDur = 0.8;
+
+  // NORMAL fault: make the initial surface draw down (suction) then rebound upward into a wave
+  pulse.bipolar = (S && S.fault === 'normal');
+  if(pulse.bipolar) pulse.spawnDur = 0.55; // a bit quicker so drawdown feels responsive
+
+  pulse.amp0   = Math.max(0, mag);
+  var oi = Math.max(0, Math.min(N-1, Math.floor(N * WAVE_ORIGIN_FRAC)));
+  pulse.h0     = depth[oi] || DEPTH_MAX_M;
+  pulse.sigF   = 0.045;
+
+  rebuildEta();
+
+  // Spawn fault energy rings when the wave is generated.
+  // For NORMAL fault, delay rings until plate motion finishes (phase 2)
+  // so the circles sync with the wave timing.
+  if(S && S.fault === 'normal'){
+    S.ringsPending = true;
+  } else {
+    spawnEnergyRings();
+  }
+}
+
+function spawnEnvelope(){
+  // Smooth ramp so the wave grows in instead of popping in.
+  if(!pulse.active || pulse.done) return 0;
+  var d = Math.max(0.001, pulse.spawnDur || 0.8);
+  var t = (pulse.spawnT || 0) / d;
+  t = t < 0 ? 0 : (t > 1 ? 1 : t);
+  return ss(t);
+}
+
+function bipolarFactor(){
+  if(!pulse.bipolar) return 1;
+  var t = pulse.spawnT || 0;
+  var hold = Math.max(0, pulse.bipolarHold || 0);
+  var dur  = Math.max(0.15, pulse.bipolarDur || 0.9);
+
+  // 0..1 over the transition window (after the hold)
+  var u = (t - hold) / dur;
+  u = u < 0 ? 0 : (u > 1 ? 1 : u);
+
+  // Smoothly go from -1 (drawdown) to +1 (uplift)
+  var s = ss(u) * 2 - 1;
+
+  // If still within hold period, stay near drawdown
+  if(t < hold) s = -1;
+
+  return s;
+}
+
+function crestAmpAndShoal(){
+  var ci = Math.max(0, Math.min(N-1, Math.round(pulse.posF*(N-1))));
+  var hC = depth[ci];
+
+  var shoalProg = (pulse.posF - SHOAL_START) / (SHOAL_END - SHOAL_START);
+  shoalProg = Math.max(0, Math.min(1, shoalProg));
+  shoalProg = Math.pow(shoalProg, SHOAL_BLEND_POWER);
+
+  var ampShoal = shoaledAmplitude(
+    pulse.amp0,
+    Math.max(0.1, pulse.h0 || DEPTH_MAX_M),
+    hC,
+    { minDepth: 1.8, maxAmp: SHOAL_MAX_AMP }
+  );
+
+  var amp = pulse.amp0 + (ampShoal - pulse.amp0) * shoalProg;
+  amp *= spawnEnvelope();
+  amp *= bipolarFactor();
+  return { amp: amp, shoalProg: shoalProg, hC: hC };
+}
+
+function waveHeightAt(i, centerF, amp, shoalProg){
+  if(!pulse.active || pulse.done) return 0;
+  var fx = i/(N-1);
+  var df = fx - centerF;
+
+  var sigFront = pulse.sigF * (1.0 - shoalProg * 0.55);
+  var sigBack  = pulse.sigF * (1.0 + shoalProg * 0.35);
+  var sig = (df > 0) ? sigFront : sigBack;
+
+  return amp * Math.exp(-0.5*(df/sig)*(df/sig));
+}
+
+function rebuildEta(){
+  eta.fill(0);
+  etaLand.fill(0);
+  if(!pulse.active || pulse.done) return;
+
+  if(!pulse.runup){
+    var cs = crestAmpAndShoal();
+    var amp = cs.amp;
+    var shoalProg = cs.shoalProg;
+
+    for(var i=0;i<N;i++){
+      if(depth[i] <= 0) continue;
+      eta[i] = waveHeightAt(i, pulse.posF, amp, shoalProg);
+    }
+    return;
+  }
+
+  var landi = firstLand();
+  var sigL = 0.020;
+  for(var j=landi; j<N; j++){
+    var fx = j/(N-1);
+    var df = fx - pulse.posF;
+    etaLand[j] = pulse.runupAmp * Math.exp(-0.5*(df/sigL)*(df/sigL));
+  }
+}
+
+function simStep(dt){
+  if(!pulse.active || pulse.done) return;
+
+  // advance spawn ramp
+  pulse.spawnT = (pulse.spawnT || 0) + dt;
+
+  if(pulse.runup){
+    pulse.posF += RUNUP_SPEED * dt;
+
+    var prog = (pulse.posF - pulse.runupPos) / Math.max(0.01, (1.0 - pulse.runupPos));
+    prog = Math.max(0, prog);
+
+    var decay = Math.exp(-RUNUP_DECAY * prog);
+    pulse.runupAmp = pulse.runupAmp0 * decay;
+
+    if(prog >= 1.0 || pulse.runupAmp < 0.05){
+      pulse.done = true;
+      pulse.active = false;
+      eta.fill(0);
+      etaLand.fill(0);
+      return;
+    }
+
+    rebuildEta();
+    return;
+  }
+
+  var ci = Math.max(0, Math.min(N-1, Math.round(pulse.posF*(N-1))));
+  var h  = depth[ci];
+  var h0 = Math.max(0.1, pulse.h0 || DEPTH_MAX_M);
+
+  var hRatio = Math.max(0.02, Math.min(1.0, h / h0));
+  var speedMult = 1.0 + 0.55 * (1.0 - hRatio);
+  pulse.posF += (SIM_SPEED * speedMult) * dt;
+
+  var sigBase = 0.045;
+  var sp = crestAmpAndShoal().shoalProg;
+  var thinMult = 1.0 - 0.55 * sp;
+  pulse.sigF = sigBase * Math.pow(hRatio, 0.30) * thinMult;
+
+  if(pulse.posF >= _landFrac){
+    var cs = crestAmpAndShoal();
+
+    pulse.runup = true;
+    pulse.runupPos = _landFrac;
+    pulse.posF = _landFrac;
+
+    pulse.runupAmp0 = Math.max(0.4, cs.amp * 1.05);
+    pulse.runupAmp  = pulse.runupAmp0;
+
+    // lock spawn ramp to full so shoreline transition stays strong
+    pulse.spawnT = pulse.spawnDur;
+
+    rebuildEta();
+    return;
+  }
+
+  rebuildEta();
+}
+
+// =====================================================
+// FAULTS + STATE
+// =====================================================
+var FAULTS = {
+  reverse:     {vS:1.00, hS:0.04, col:"#ff7744", name:"reverse fault"},
+  normal:      {vS:0.38, hS:0.10, col:"#44aaff", name:"Normal Fault"},
+  "strike-slip":{vS:0.03, hS:1.00, col:"#44dd88", name:"Strike-Slip Fault"}
+};
+
+var S = {fault:"reverse", slip:5, phase:0, qt:0, peakH:0, triggered:false, lastTs:0, lastDt:0, ringsPending:false,
+         bSpringT:0, bSpringAmp:0,
+         // normal-fault delayed subsidence (Plate B droop) AFTER Plate A motion
+         nSubsT:0, nSubsAmp:0, nSubsActive:false};
+var RDUR = 5.0;
+
+var p1dy=0,p1dx=0,p2dy=0,p2dx=0;
+// Strike-slip proxy (side-view): visualize lateral shear with surface markers
+var shearA=0, shearB=0;
+
+var bendA=0;
+var injected=false;
+
+// =====================================================
+// FAULT ENERGY RINGS (concentric circles)
+// =====================================================
+var RINGS = {
+  active: false,
+  t0: 0,
+  x: 0,
+  y: 0
+};
+
+function spawnEnergyRings(){
+  // Prefer the latest fault location from drawFaultZone().
+  var fo = window.__FAULT_ORIGIN;
+  if(fo && typeof fo.x === 'number' && typeof fo.y === 'number'){
+    RINGS.x = fo.x;
+    RINGS.y = fo.y;
+  } else {
+    // Fallback: near the wave origin above the fault
+    RINGS.x = W * (WAVE_ORIGIN_FRAC || 0.22);
+    RINGS.y = SEA_Y + 20;
+  }
+  RINGS.t0 = performance.now() * 0.001;
+  RINGS.active = true;
+}
+
+function drawEnergyRings(){
+  if(!RINGS.active) return;
+
+  var t = performance.now() * 0.001;
+  var age = t - RINGS.t0;
+  if(age < 0) age = 0;
+
+  // Lifespan + feel
+  var life = 2.6;                   // seconds
+  var speed = Math.max(240, W*0.46); // px/sec
+  var spacing = Math.max(26, W*0.030);
+  var ringCount = 7;
+
+  if(age > life){
+    RINGS.active = false;
+    return;
+  }
+
+  var fadeT = 1 - (age / life);
+  fadeT = fadeT < 0 ? 0 : (fadeT > 1 ? 1 : fadeT);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+
+  var maxR = Math.max(W, H) * 1.15;
+
+  for(var i=0;i<ringCount;i++){
+    var r = age*speed + i*spacing;
+    if(r > maxR) continue;
+
+    var distFade = 1 - (r / maxR);
+    distFade = distFade < 0 ? 0 : distFade;
+
+    var a = 0.55 * fadeT * distFade;
+    if(a < 0.01) continue;
+
+    ctx.strokeStyle = 'rgba(255,60,60,' + a.toFixed(3) + ')';
+    ctx.lineWidth = Math.max(1.4, 2.8 * distFade);
+
+    ctx.beginPath();
+    ctx.arc(RINGS.x, RINGS.y, r, 0, Math.PI*2);
+    ctx.stroke();
+  }
+
+  // Hot core
+  var coreA = 0.30 * fadeT;
+  ctx.fillStyle = 'rgba(255,60,60,' + coreA.toFixed(3) + ')';
+  ctx.beginPath();
+  ctx.arc(RINGS.x, RINGS.y, Math.max(4, 10 + 16*(1-fadeT)), 0, Math.PI*2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// =====================================================
+// TEXTURE
+// =====================================================
+var _dp=null;
+function getDirt(){
+  if(_dp) return _dp;
+  var tc=document.createElement("canvas");
+  tc.width=tc.height=200;
+  var tx=tc.getContext("2d");
+
+  tx.fillStyle="#8a5c2e";
+  tx.fillRect(0,0,200,200);
+
+  for(var i=0;i<700;i++){
+    var x=Math.random()*200, y=Math.random()*200, r=1+Math.random()*5;
+    var lum=Math.random();
+    if(lum<0.3) tx.fillStyle="rgba(60,35,10,0.55)";
+    else if(lum<0.6) tx.fillStyle="rgba(140,95,45,0.45)";
+    else tx.fillStyle="rgba(170,120,60,0.35)";
+    tx.beginPath(); tx.arc(x,y,r,0,Math.PI*2); tx.fill();
+  }
+  for(var j=0;j<18;j++){
+    var sx=Math.random()*180, sy=100+Math.random()*90;
+    var sw=8+Math.random()*18, sh=5+Math.random()*10;
+    tx.fillStyle="rgba(200,175,130,0.3)";
+    tx.beginPath(); tx.ellipse(sx,sy,sw,sh,Math.random()*Math.PI,0,Math.PI*2); tx.fill();
+  }
+
+  _dp = ctx.createPattern(tc,"repeat");
+  return _dp;
+}
+
+var _mp = null;
+var _mc = null;
+function getMagma(t){
+  if(!_mc){
+    var Sx = 512;
+    _mc = document.createElement('canvas');
+    _mc.width = _mc.height = Sx;
+    var mx = _mc.getContext('2d');
+
+    var bg = mx.createRadialGradient(Sx*0.5,Sx*0.5,Sx*0.05, Sx*0.5,Sx*0.5,Sx*0.85);
+    bg.addColorStop(0,'#ff2200');
+    bg.addColorStop(0.35,'#c40000');
+    bg.addColorStop(0.7,'#7a0000');
+    bg.addColorStop(1,'#240000');
+    mx.fillStyle = bg;
+    mx.fillRect(0,0,Sx,Sx);
+
+    function wrap(draw,x,y,pad){
+      pad = pad || 100;
+      draw(x,y);
+      if(x<pad) draw(x+Sx,y);
+      if(x>Sx-pad) draw(x-Sx,y);
+      if(y<pad) draw(x,y+Sx);
+      if(y>Sx-pad) draw(x,y-Sx);
+      if(x<pad && y<pad) draw(x+Sx,y+Sx);
+      if(x<pad && y>Sx-pad) draw(x+Sx,y-Sx);
+      if(x>Sx-pad && y<pad) draw(x-Sx,y+Sx);
+      if(x>Sx-pad && y>Sx-pad) draw(x-Sx,y-Sx);
+    }
+
+    mx.save();
+    mx.globalCompositeOperation = 'multiply';
+    mx.filter = 'blur(22px)';
+    for(var i=0;i<26;i++){
+      var x=Math.random()*Sx;
+      var y=Math.random()*Sx;
+      var r=90+Math.random()*170;
+      wrap(function(xx,yy){
+        var dg = mx.createRadialGradient(xx,yy,0,xx,yy,r);
+        dg.addColorStop(0,'rgba(0,0,0,0.65)');
+        dg.addColorStop(1,'rgba(0,0,0,0)');
+        mx.fillStyle = dg;
+        mx.beginPath();
+        mx.arc(xx,yy,r,0,Math.PI*2);
+        mx.fill();
+      },x,y);
+    }
+    mx.restore();
+
+    mx.save();
+    mx.globalCompositeOperation = 'screen';
+    mx.filter = 'blur(16px)';
+    for(var j=0;j<34;j++){
+      var x2=Math.random()*Sx;
+      var y2=Math.random()*Sx;
+      var r2=60+Math.random()*150;
+      wrap(function(xx,yy){
+        var hg = mx.createRadialGradient(xx,yy,0,xx,yy,r2);
+        hg.addColorStop(0,'rgba(255,180,80,0.75)');
+        hg.addColorStop(0.4,'rgba(255,80,20,0.55)');
+        hg.addColorStop(1,'rgba(255,60,10,0)');
+        mx.fillStyle = hg;
+        mx.beginPath();
+        mx.arc(xx,yy,r2,0,Math.PI*2);
+        mx.fill();
+      },x2,y2);
+    }
+    mx.restore();
+
+    mx.save();
+    mx.globalCompositeOperation = 'screen';
+    mx.filter = 'blur(4px)';
+    for(var k=0;k<48;k++){
+      var x3=Math.random()*Sx;
+      var y3=Math.random()*Sx;
+      var r3=8+Math.random()*20;
+      wrap(function(xx,yy){
+        var yg = mx.createRadialGradient(xx,yy,0,xx,yy,r3);
+        yg.addColorStop(0,'rgba(255,220,80,0.85)');
+        yg.addColorStop(0.5,'rgba(255,170,40,0.45)');
+        yg.addColorStop(1,'rgba(255,140,20,0)');
+        mx.fillStyle = yg;
+        mx.beginPath();
+        mx.arc(xx,yy,r3,0,Math.PI*2);
+        mx.fill();
+      },x3,y3);
+    }
+    mx.restore();
+
+    mx.save();
+    mx.globalAlpha = 0.45;
+    mx.filter = 'blur(10px)';
+    mx.drawImage(_mc,0,0);
+    mx.restore();
+
+    _mp = ctx.createPattern(_mc,'repeat');
+  }
+  return _mp;
+}
+
+// =====================================================
+// DRAWING
+// =====================================================
+function drawSky(){
+  var g=ctx.createLinearGradient(0,0,0,SEA_Y);
+  g.addColorStop(0,"#c8ecf8");
+  g.addColorStop(0.5,"#d8f0fb");
+  g.addColorStop(1,"#e0f4fc");
+  ctx.fillStyle=g;
+  ctx.fillRect(0,0,W,SEA_Y);
+
+  var sx=W*0.055, sy=H*0.09, sr=H*0.072;
+  var sunG=ctx.createRadialGradient(sx,sy,0,sx,sy,sr);
+  sunG.addColorStop(0,"rgba(255,240,100,1)");
+  sunG.addColorStop(0.55,"rgba(255,220,60,0.95)");
+  sunG.addColorStop(0.8,"rgba(255,200,30,0.4)");
+  sunG.addColorStop(1,"rgba(255,200,30,0)");
+  ctx.fillStyle=sunG;
+  ctx.beginPath(); ctx.arc(sx,sy,sr,0,Math.PI*2); ctx.fill();
+}
+
+function drawGrid(){
+  ctx.save();
+  ctx.strokeStyle="rgba(60,120,180,0.13)";
+  ctx.lineWidth=1;
+  ctx.setLineDash([2,8]);
+
+  var step1m = PPM * 1.0;
+  for(var y=SEA_Y; y<FLOOR_Y; y+=step1m){
+    ctx.beginPath(); ctx.moveTo(54,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  for(var ya=SEA_Y-step1m; ya>0; ya-=step1m){
+    ctx.beginPath(); ctx.moveTo(54,ya); ctx.lineTo(W,ya); ctx.stroke();
+  }
+  for(var x=80;x<W;x+=80){
+    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawRuler(){
+  ctx.save();
+  // Ruler background (tinted so it doesn't look like a black patch over the sea)
+  var rg = ctx.createLinearGradient(0, 0, 0, H);
+  rg.addColorStop(0, "rgba(8,21,32,0.55)");
+  rg.addColorStop(1, "rgba(8,21,32,0.35)");
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, 0, 56, H);
+
+  ctx.strokeStyle="rgba(100,200,255,0.55)";
+  ctx.lineWidth=1.5;
+  ctx.setLineDash([8,5]);
+  ctx.beginPath(); ctx.moveTo(56,SEA_Y); ctx.lineTo(W,SEA_Y); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.font="bold 10px monospace";
+  ctx.textAlign="right";
+
+  ctx.fillStyle="rgba(180,230,255,1)";
+  ctx.fillText("0m",52,SEA_Y+4);
+
+  for(var m=1;m<=Math.floor(DEPTH_MAX_M*2);m++){
+    var d = m*0.5;
+    var ly = SEA_Y + d*PPM;
+    if(ly >= FLOOR_Y-2) break;
+    ctx.strokeStyle="rgba(140,200,240,0.7)";
+    ctx.beginPath(); ctx.moveTo(50,ly); ctx.lineTo(56,ly); ctx.stroke();
+    ctx.fillStyle="rgba(140,200,240,0.9)";
+    ctx.fillText(d.toFixed(1)+"m",48,ly+4);
+  }
+
+  for(var w=5; w<=60; w+=5){
+    var lya = SEA_Y - w*PPM;
+    if(lya <= 0) break;
+    ctx.strokeStyle="rgba(255,220,80,0.7)";
+    ctx.beginPath(); ctx.moveTo(46,lya); ctx.lineTo(56,lya); ctx.stroke();
+    ctx.fillStyle="rgba(255,220,80,0.95)";
+    ctx.fillText("+"+w+"m",48,lya+4);
+  }
+  ctx.restore();
+}
+
+function drawTerrain(){
+  ctx.save();
+  var landi = firstLand();
+  var landX = cx(landi);
+  var leftCut = W * 0.32;
+
+  var slope1StartX = W * DEEP_END;
+  var shelfX0      = W * TIER1_END;
+  var shelfX1      = W * SHELF_END;
+
+  var dm = (window.__DEPTH_DRAW_MULT || 1.0);
+  var shelfY = SEA_Y + MID_DEPTH_M * PPM * dm;
+
+  var CURVE1 = 1.50;
+  var CURVE2 = 1.50;
+
+  var c1x1 = slope1StartX + (shelfX0 - slope1StartX) * 0.45;
+  var c1y1 = FLOOR_Y - (FLOOR_Y - shelfY) * (0.02 * CURVE1);
+  var c1x2 = slope1StartX + (shelfX0 - slope1StartX) * 0.98;
+  var c1y2 = shelfY + (FLOOR_Y - shelfY) * (0.32 * CURVE1);
+
+  var c2x1 = shelfX1 + (landX - shelfX1) * 0.38;
+  var c2y1 = shelfY - (shelfY - SEA_Y) * (0.55 * CURVE2);
+  var c2x2 = shelfX1 + (landX - shelfX1) * 0.96;
+  var c2y2 = SEA_Y + (shelfY - SEA_Y) * (0.06 * CURVE2);
+
+  ctx.beginPath();
+  ctx.moveTo(leftCut, H);
+  ctx.lineTo(leftCut, FLOOR_Y);
+  ctx.lineTo(slope1StartX, FLOOR_Y);
+  ctx.bezierCurveTo(c1x1,c1y1,c1x2,c1y2,shelfX0,shelfY);
+  ctx.lineTo(shelfX1,shelfY);
+  ctx.bezierCurveTo(c2x1,c2y1,c2x2,c2y2,landX,SEA_Y);
+  ctx.lineTo(W,SEA_Y);
+  ctx.lineTo(W,H);
+  ctx.closePath();
+
+  ctx.fillStyle = '#8a5c2e';
+  ctx.fill();
+
+  var ov=ctx.createLinearGradient(0,SEA_Y,0,FLOOR_Y);
+  ov.addColorStop(0,"rgba(20,10,0,0.45)");
+  ov.addColorStop(1,"rgba(20,10,0,0.05)");
+  ctx.fillStyle=ov;
+
+  ctx.beginPath();
+  ctx.moveTo(leftCut, H);
+  ctx.lineTo(leftCut, FLOOR_Y);
+  ctx.lineTo(slope1StartX, FLOOR_Y);
+  ctx.bezierCurveTo(c1x1,c1y1,c1x2,c1y2,shelfX0,shelfY);
+  ctx.lineTo(shelfX1,shelfY);
+  ctx.bezierCurveTo(c2x1,c2y1,c2x2,c2y2,landX,SEA_Y);
+  ctx.lineTo(landX,SEA_Y);
+  ctx.lineTo(landX,H);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle="rgba(160,110,50,0.5)";
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  ctx.moveTo(leftCut, FLOOR_Y);
+  ctx.lineTo(slope1StartX, FLOOR_Y);
+  ctx.bezierCurveTo(c1x1,c1y1,c1x2,c1y2,shelfX0,shelfY);
+  ctx.lineTo(shelfX1,shelfY);
+  ctx.bezierCurveTo(c2x1,c2y1,c2x2,c2y2,landX,SEA_Y);
+  ctx.stroke();
+
+  ctx.restore();
+
+  window._slBez = {
+    landX: landX,
+    landi: landi,
+    leftCut: leftCut,
+    s1sx: slope1StartX,
+    s1x1: c1x1, s1y1: c1y1,
+    s1x2: c1x2, s1y2: c1y2,
+    s1ex: shelfX0, s1ey: shelfY,
+    shelfX1: shelfX1, shelfY: shelfY,
+    s2x1: c2x1, s2y1: c2y1,
+    s2x2: c2x2, s2y2: c2y2
+  };
+}
+
+function drawWater(){
+  ctx.save();
+
+  var landi = firstLand();
+  var landX = cx(landi);
+  var sB    = window._slBez || {};
+  var leftCut = (sB && sB.leftCut != null) ? sB.leftCut : (W * 0.32);
+  if(sB && sB.landX) landX = sB.landX;
+
+  // Safety fill: ensure the entire ocean WATER COLUMN is painted (prevents dark/unpainted patches)
+  // IMPORTANT: Use the exact same gradient stops AND interpolation span as the main water fill
+  // to avoid any visible color mismatch.
+  ctx.save();
+  var oceanW = Math.max(0, landX);
+
+  // Main water gradient (same as the polygon fill below)
+  var wg = ctx.createLinearGradient(0, SEA_Y - 40*PPM, 0, FLOOR_Y);
+  wg.addColorStop(0, "#2a7fc0");
+  wg.addColorStop(0.15, "#2278b8");
+  wg.addColorStop(0.5, "#1e6aaa");
+  wg.addColorStop(1, "#124a80");
+
+  // Fill the full ocean column from sea level down to the seafloor using the SAME gradient span
+  ctx.fillStyle = wg;
+  ctx.fillRect(0, SEA_Y, oceanW, Math.max(0, FLOOR_Y - SEA_Y));
+
+  // Fill anything below the seafloor with the exact bottom color of the gradient
+  // (prevents a different interpolation when extending the gradient to the canvas bottom)
+  ctx.fillStyle = "#124a80";
+  ctx.fillRect(0, FLOOR_Y, oceanW, Math.max(0, H - FLOOR_Y));
+  ctx.restore();
+
+  var pts = [];
+  var STEPS = 320;
+
+  for(var s=0;s<=STEPS;s++){
+    var frac = s/STEPS;
+    var ci2 = Math.min(landi-1, Math.max(0, Math.round(frac*(landi-1))));
+    pts.push({x: frac*landX, y: SEA_Y - (eta[ci2]||0)*PPM});
+  }
+
+  var runupEndIdx = -1;
+  if(pulse.runup && !pulse.done){
+    for(var i=landi; i<N; i++){
+      var r = etaLand[i] || 0;
+      if(r > 0.001){
+        runupEndIdx = i;
+        pts.push({x: cx(i), y: terrY(i) - r*PPM});
+      }
+    }
+    pts.push({x: W, y: SEA_Y});
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(var p=1;p<pts.length;p++) ctx.lineTo(pts[p].x, pts[p].y);
+
+  if(runupEndIdx >= 0){
+    ctx.lineTo(W, SEA_Y);
+    ctx.lineTo(landX, SEA_Y);
+  }else{
+    ctx.lineTo(landX, SEA_Y);
+  }
+
+  if(sB && sB.s2x2 != null){
+    ctx.bezierCurveTo(sB.s2x2, sB.s2y2, sB.s2x1, sB.s2y1, sB.shelfX1, sB.shelfY);
+    ctx.lineTo(sB.s1ex, sB.s1ey);
+    ctx.bezierCurveTo(sB.s1x2, sB.s1y2, sB.s1x1, sB.s1y1, sB.s1sx, FLOOR_Y);
+  }
+  ctx.lineTo(leftCut, FLOOR_Y);
+  ctx.lineTo(0, FLOOR_Y);
+  ctx.closePath();
+
+  // Reuse the same gradient used in the safety fill above when available
+  // (keeps colors perfectly consistent)
+  if(typeof wg === 'undefined'){
+    wg = ctx.createLinearGradient(0, SEA_Y - 40*PPM, 0, FLOOR_Y);
+    wg.addColorStop(0,"#2a7fc0");
+    wg.addColorStop(0.15,"#2278b8");
+    wg.addColorStop(0.5,"#1e6aaa");
+    wg.addColorStop(1,"#124a80");
+  }
+  ctx.fillStyle = wg;
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for(var q=1;q<pts.length;q++) ctx.lineTo(pts[q].x, pts[q].y);
+  ctx.strokeStyle="rgba(180,230,255,0.55)";
+  ctx.lineWidth=2;
+  ctx.stroke();
+
+  // foam/runup visuals remain unchanged...
+  if(pulse.runup && !pulse.done){
+    var shoreX = landX;
+    var frontIdx = Math.max(0, Math.min(N-1, Math.round(pulse.posF*(N-1))));
+    var frontX   = cx(frontIdx);
+
+    var rAmp = (pulse.runupAmp || 0);
+    var foamA = Math.max(0, Math.min(1, (rAmp - 0.25) / 4.0));
+
+    ctx.save();
+
+    ctx.globalAlpha = 0.35 + 0.55 * foamA;
+    ctx.fillStyle = "rgba(245,252,255,1)";
+    var bandW = Math.max(28, W * 0.030);
+    var bandH = Math.max(14, H * 0.030);
+    ctx.beginPath();
+    ctx.ellipse(shoreX + bandW*0.25, SEA_Y - 1, bandW, bandH, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.28 + 0.55 * foamA;
+    var fW = Math.max(34, W * 0.034);
+    var fH = Math.max(16, H * 0.034);
+    ctx.beginPath();
+    ctx.ellipse(frontX, SEA_Y - Math.min(10, rAmp*PPM*0.30), fW, fH, 0, 0, Math.PI*2);
+    ctx.fill();
+
+    var tilt = -0.18 - 0.30 * foamA;
+    var wedgeLen = Math.max(55, W * 0.070);
+    var wedgeH   = Math.max(18, H * 0.050) * (0.55 + 0.75*foamA);
+
+    ctx.globalAlpha = 0.22 + 0.50 * foamA;
+    ctx.translate(shoreX + bandW*0.10, SEA_Y - 2);
+    ctx.rotate(tilt);
+
+    ctx.fillStyle = "rgba(235,248,255,1)";
+    ctx.beginPath();
+    ctx.moveTo(-bandW*0.25, 0);
+    ctx.lineTo(wedgeLen*0.55, -wedgeH*0.35);
+    ctx.lineTo(wedgeLen, wedgeH*0.10);
+    ctx.lineTo(wedgeLen*0.25, wedgeH*0.55);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.globalAlpha = (0.25 + 0.55 * foamA);
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-bandW*0.15, 0);
+    ctx.quadraticCurveTo(wedgeLen*0.55, -wedgeH*0.55, wedgeLen*0.98, wedgeH*0.02);
+    ctx.stroke();
+
+    ctx.setTransform(1,0,0,1,0,0);
+
+    function foamBand(xStart, xEnd, yMid, heightPx, tSec, strength){
+      var segs = 42;
+      var w = Math.max(1, xEnd - xStart);
+      var phase = tSec * 3.2;
+
+      ctx.beginPath();
+      for(var s=0; s<=segs; s++){
+        var u = s/segs;
+        var x = xStart + u*w;
+        var n =
+          0.55*Math.sin(phase + u*10.0) +
+          0.30*Math.sin(phase*1.7 + u*21.0 + 1.2) +
+          0.15*Math.sin(phase*2.6 + u*34.0 + 2.4);
+        var y = yMid - heightPx*0.65 + n*heightPx*0.25;
+        if(s===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+      }
+      for(var s2=segs; s2>=0; s2--){
+        var u2 = s2/segs;
+        var x2 = xStart + u2*w;
+        var n2 =
+          0.55*Math.sin(phase + u2*10.0 + 0.9) +
+          0.30*Math.sin(phase*1.7 + u2*21.0 + 2.0) +
+          0.15*Math.sin(phase*2.6 + u2*34.0 + 3.1);
+        var y2 = yMid + heightPx*0.35 + n2*heightPx*0.20;
+        ctx.lineTo(x2,y2);
+      }
+      ctx.closePath();
+
+      ctx.globalAlpha = (0.10 + 0.35*strength);
+      ctx.fillStyle = "rgba(255,255,255,1)";
+      ctx.fill();
+
+      ctx.globalAlpha = (0.10 + 0.45*strength);
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([10, 10]);
+      ctx.lineDashOffset = -tSec*60;
+      ctx.beginPath();
+      for(var k=0;k<=segs;k++){
+        var u3 = k/segs;
+        var x3 = xStart + u3*w;
+        var n3 =
+          0.65*Math.sin(phase + u3*10.0) +
+          0.25*Math.sin(phase*1.9 + u3*18.0 + 0.7);
+        var y3 = yMid - heightPx*0.25 + n3*heightPx*0.18;
+        if(k===0) ctx.moveTo(x3,y3); else ctx.lineTo(x3,y3);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
+    var tSec = performance.now()*0.001;
+
+    foamBand(
+      shoreX - bandW*0.75,
+      shoreX + wedgeLen*0.95,
+      SEA_Y - 2,
+      Math.max(14, bandH*1.35) * (0.70 + 0.70*foamA),
+      tSec,
+      foamA
+    );
+
+    foamBand(
+      frontX - fW*1.15,
+      frontX + fW*0.85,
+      SEA_Y - Math.min(10, rAmp*PPM*0.25),
+      Math.max(12, fH*1.10) * (0.55 + 0.75*foamA),
+      tSec + 0.8,
+      foamA
+    );
+
+    ctx.globalAlpha = 0.06 + 0.18*foamA;
+    var hazeW = Math.max(60, wedgeLen*1.05);
+    var hazeH = Math.max(18, wedgeH*0.85);
+    var hg = ctx.createLinearGradient(0, SEA_Y - hazeH, 0, SEA_Y + 4);
+    hg.addColorStop(0, "rgba(255,255,255,0)");
+    hg.addColorStop(0.5, "rgba(255,255,255,0.55)");
+    hg.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = hg;
+    ctx.fillRect(shoreX - bandW*0.5, SEA_Y - hazeH, hazeW, hazeH);
+    ctx.globalAlpha = 1;
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+function drawRunup(){ /* no-op */ }
+
+// =====================================================
+// DYNAMIC OBJECTS
+// =====================================================
+var objects = [];
+
+function waterHeightAtX(x){
+  var i = Math.max(0, Math.min(N-1, Math.round((x/W)*(N-1))));
+  if(depth[i] > 0) return eta[i];
+  return etaLand[i] || 0;
+}
+
+function initObjects(){
+  objects.length = 0;
+
+  var landi = firstLand();
+  var landX = cx(landi);
+  var shoreW = W - landX;
+
+  function add(kind, frac, opts){
+    opts = opts || {};
+    objects.push({
+      kind: kind,
+      x: landX + shoreW * frac,
+      y: SEA_Y,
+      vx: 0,
+      vy: 0,
+      angle: 0,
+      angV: 0,
+      mass: (opts.mass != null) ? opts.mass : 1.0,
+      hp: (opts.hp != null) ? opts.hp : 1.0,
+      anchored: !!opts.anchored
+    });
+  }
+
+  [0.08,0.22,0.38,0.60,0.80].forEach(function(f){
+    add('tree', f, { mass: 0.6, hp: 0.9, anchored: true });
+  });
+
+  add('house', 0.30, { mass: 2.2, hp: 1.0, anchored: false });
+  add('tower', 0.62, { mass: 3.5, hp: 1.4, anchored: false });
+}
+
+function updateObjects(dt){
+  if(S.phase !== 2) return;
+
+  var dx = 10;
+
+  for(var i=0;i<objects.length;i++){
+    var o = objects[i];
+
+    o.y = SEA_Y;
+
+    var h  = waterHeightAtX(o.x);
+    var hL = waterHeightAtX(o.x - dx);
+    var hR = waterHeightAtX(o.x + dx);
+
+    var slope = (hR - hL) / Math.max(1, (2*dx));
+    var wet = h > 0.25;
+
+    if(o.anchored && h > 1.2) o.anchored = false;
+
+    if(wet){
+      var push = (h * h) * 38;
+      var slopePush = Math.max(0, slope) * 1400;
+
+      var anchorMult = o.anchored ? 0.16 : 1.0;
+      var ax = (push + slopePush) * anchorMult / Math.max(0.25, o.mass);
+
+      var slip01 = Math.max(0, Math.min(1, (S.slip - 1) / 9));
+      if(slip01 <= 0){
+        continue;
+      }
+
+      var slipScale = Math.pow(slip01, 2.4);
+
+      o.vx += (ax * slipScale) * dt;
+      o.angV += ((h * 0.95) * slipScale) * dt * (o.anchored ? 0.25 : 1.0);
+
+      var excess = Math.max(0, h - 0.9);
+      var dmg = (excess * excess) * (0.08 + 0.50 * slipScale) * dt;
+      o.hp = Math.max(0, o.hp - dmg);
+
+      if(o.hp < 0.25) o.mass = Math.max(0.45, o.mass * 0.996);
+    }
+
+    var drag = o.anchored ? 10.0 : 2.3;
+    o.vx *= Math.exp(-drag * dt);
+
+    o.x += o.vx * dt;
+
+    var landi = firstLand();
+    var landX = cx(landi);
+    if(o.x < landX + 6) o.x = landX + 6;
+    if(o.x > W - 10) o.x = W - 10;
+
+    o.angle += o.angV * dt;
+    o.angV *= Math.exp(-3.0 * dt);
+
+    if(o.hp <= 0.05){
+      o.angle *= Math.exp(-1.8 * dt);
+      o.angV *= Math.exp(-2.2 * dt);
+    }
+  }
+}
+
+function drawObjects(){
+  var baseY = SEA_Y;
+  ctx.save();
+
+  for(var i=0;i<objects.length;i++){
+    var o = objects[i];
+
+    if(o.kind === 'tree'){
+      if(o.hp <= 0.08) continue;
+
+      var trunkH = H * 0.07;
+      var trunkW = W * 0.006;
+
+      ctx.save();
+      ctx.translate(o.x, baseY);
+      ctx.rotate(o.angle);
+      ctx.translate(-o.x, -baseY);
+
+      ctx.globalAlpha = 0.45 + 0.55 * Math.min(1, o.hp);
+
+      ctx.fillStyle = '#7a5020';
+      ctx.fillRect(o.x - trunkW/2, baseY - trunkH, trunkW, trunkH);
+
+      ctx.fillStyle = '#3a8030';
+      ctx.beginPath(); ctx.arc(o.x, baseY - trunkH - H*0.02, W*0.018, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#4a9a3a';
+      ctx.beginPath(); ctx.arc(o.x - W*0.012, baseY - trunkH, W*0.013, 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(o.x + W*0.012, baseY - trunkH, W*0.013, 0, Math.PI*2); ctx.fill();
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      continue;
+    }
+
+    if(o.kind === 'house'){
+      var houseW = W*0.040;
+      var houseH = H*0.085;
+
+      if(o.hp <= 0.12){
+        ctx.fillStyle = '#9a7855';
+        ctx.fillRect(o.x - houseW*0.55, baseY - H*0.03, houseW*1.2, H*0.03);
+        ctx.fillStyle = '#7a5838';
+        for(var r=0;r<6;r++){
+          ctx.fillRect(o.x - houseW*0.45 + houseW*(r*0.16), baseY - H*(0.012 + (r%2)*0.010), houseW*0.22, H*(0.012+(r%2)*0.010));
+        }
+        ctx.fillStyle = '#cc3322';
+        ctx.beginPath();
+        ctx.moveTo(o.x - houseW*0.05, baseY - H*0.055);
+        ctx.lineTo(o.x - houseW*0.18, baseY - H*0.010);
+        ctx.lineTo(o.x + houseW*0.18, baseY - H*0.010);
+        ctx.closePath();
+        ctx.fill();
+        continue;
+      }
+
+      ctx.save();
+      ctx.translate(o.x, baseY);
+      ctx.rotate(o.angle);
+      ctx.translate(-o.x, -baseY);
+
+      ctx.globalAlpha = 0.55 + 0.45 * Math.min(1, o.hp);
+
+      ctx.fillStyle = '#e8d5a0';
+      ctx.fillRect(o.x - houseW*0.5, baseY - houseH, houseW, houseH);
+
+      ctx.fillStyle = '#cc3322';
+      ctx.beginPath();
+      ctx.moveTo(o.x - houseW*0.60, baseY - houseH);
+      ctx.lineTo(o.x,              baseY - houseH - houseW*0.50);
+      ctx.lineTo(o.x + houseW*0.60, baseY - houseH);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = '#9a6030';
+      ctx.fillRect(o.x - houseW*0.12, baseY - houseH*0.36, houseW*0.24, houseH*0.36);
+
+      ctx.fillStyle = '#88aadd';
+      ctx.fillRect(o.x - houseW*0.40, baseY - houseH*0.72, houseW*0.22, houseH*0.20);
+      ctx.fillRect(o.x + houseW*0.18, baseY - houseH*0.72, houseW*0.22, houseH*0.20);
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      continue;
+    }
+
+    if(o.kind === 'tower'){
+      var twrW = W*0.048;
+      var twrH = H*0.18;
+
+      if(o.hp <= 0.10){
+        ctx.fillStyle = '#9a7855';
+        ctx.fillRect(o.x - twrW*0.70, baseY - H*0.04, twrW*1.35, H*0.04);
+        ctx.fillStyle = '#c85b45';
+        ctx.beginPath();
+        ctx.moveTo(o.x + twrW*0.10, baseY - H*0.070);
+        ctx.lineTo(o.x - twrW*0.20, baseY - H*0.010);
+        ctx.lineTo(o.x + twrW*0.25, baseY - H*0.010);
+        ctx.closePath();
+        ctx.fill();
+        continue;
+      }
+
+      ctx.save();
+      ctx.translate(o.x, baseY);
+      ctx.rotate(o.angle);
+      ctx.translate(-o.x, -baseY);
+
+      ctx.globalAlpha = 0.55 + 0.45 * Math.min(1, o.hp);
+
+      ctx.fillStyle = '#e8c870';
+      ctx.fillRect(o.x - twrW*0.5, baseY - twrH, twrW, twrH);
+
+      ctx.fillStyle = '#3a5888';
+      for(var row=0;row<5;row++) for(var col=0;col<3;col++){
+        ctx.fillRect(
+          (o.x - twrW*0.5) + twrW*(0.14 + col*0.29),
+          baseY - twrH*(0.92 - row*0.17),
+          twrW*0.18,
+          twrH*0.10
+        );
+      }
+
+      ctx.fillStyle = '#c8a850';
+      ctx.fillRect((o.x - twrW*0.5) - 2, baseY - twrH, twrW + 4, twrH*0.05);
+
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      continue;
+    }
+  }
+
+  ctx.restore();
+}
+
+// =====================================================
+// EDIT OVERLAY DRAW
+// =====================================================
+function drawPlateBEditorOverlay(){
+  if(!EDIT_PLATE_B) return;
+
+  ctx.save();
+
+  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  ctx.fillRect(0,0,W,H);
+
+  if(plateBPoints.length >= 2){
+    ctx.beginPath();
+    ctx.moveTo(plateBPoints[0].x, plateBPoints[0].y);
+    for(var i=1;i<plateBPoints.length;i++){
+      ctx.lineTo(plateBPoints[i].x, plateBPoints[i].y);
+    }
+    ctx.strokeStyle = "rgba(255,255,255,0.85)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  for(var j=0;j<plateBPoints.length;j++){
+    var p = plateBPoints[j];
+    ctx.fillStyle = "rgba(92,200,255,0.95)";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = "10px monospace";
+    ctx.fillText(j, p.x + 8, p.y - 8);
+  }
+
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillRect(10, 10, 380, 76);
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.font = "12px monospace";
+  ctx.fillText("EDIT PLATE B (E to exit)", 18, 30);
+  ctx.font = "11px monospace";
+  ctx.fillText("Click=add  Drag=move  Del=undo  C=clear", 18, 50);
+  ctx.fillText("Enter=print  S=save  L=load  P=download HTML", 18, 68);
+
+  ctx.restore();
+}
+
+// =====================================================
+// FAULT ZONE DRAW
+// =====================================================
+function clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+// Bend only the trench-edge (left tip) of Plate B when using manual-carved points.
+// `bendPx` is a pixel amount (positive bends downward). The bend falls off to 0
+// as points get farther from the trench edge.
+function bentPlateBPoints(srcPts, bendPx){
+  if(!srcPts || srcPts.length < 3) return srcPts;
+  var minX = srcPts[0].x;
+  for(var i=1;i<srcPts.length;i++) if(srcPts[i].x < minX) minX = srcPts[i].x;
+
+  // Influence radius: only affect the first ~20% of the plate width near the trench.
+  var maxX = srcPts[0].x;
+  for(var j=1;j<srcPts.length;j++) if(srcPts[j].x > maxX) maxX = srcPts[j].x;
+  var width = Math.max(1, maxX - minX);
+  var R = Math.max(80, width * 0.22);
+
+  var out = new Array(srcPts.length);
+  for(var k=0;k<srcPts.length;k++){
+    var p = srcPts[k];
+    var t = clamp01((p.x - minX) / R);          // 0 at tip, -> 1 away from tip
+    var w = 1 - (t*t*(3 - 2*t));                // smooth falloff
+
+    // Extra focus on the upper edge: points higher up bend a bit more.
+    // This keeps the far underside from deforming too much.
+    var yN = clamp01(1 - (p.y / Math.max(1, H))); // 0 bottom .. 1 top
+    var topBoost = 0.65 + 0.55 * yN;
+
+    out[k] = { x: p.x, y: p.y + bendPx * w * topBoost };
+  }
+  return out;
+}
+function arrowDraw(x1,y1,x2,y2){
+  var dx=x2-x1, dy=y2-y1, len=Math.sqrt(dx*dx+dy*dy);
+  if(len<4) return;
+  var ux=dx/len, uy=dy/len, hl=9, hw=5;
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2-ux*hl, y2-uy*hl); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-ux*hl-uy*hw, y2-uy*hl+ux*hw);
+  ctx.lineTo(x2-ux*hl+uy*hw, y2-uy*hl-ux*hw);
+  ctx.closePath(); ctx.fill();
+}
+
+function drawFaultZone(){
+  var fp = FAULTS[S.fault];
+  var fX = W * 0.18;
+  var pBEnd = W * 0.32;
+
+  ctx.save();
+  var dp = getDirt();
+
+  var magma = getMagma(0);
+  var plateH = Math.max(42, H * 0.16);
+  var magmaTop = FLOOR_Y + plateH * 0.55;
+
+  ctx.save();
+  ctx.fillStyle = magma;
+  ctx.fillRect(0, magmaTop, W, H - magmaTop + 4);
+
+  var mg = ctx.createLinearGradient(0, magmaTop - 18, 0, magmaTop + 46);
+  mg.addColorStop(0, "rgba(255,210,120,0.00)");
+  mg.addColorStop(0.30, "rgba(255,185,90,0.40)");
+  mg.addColorStop(1, "rgba(60,10,0,0.12)");
+  ctx.fillStyle = mg;
+  ctx.fillRect(0, magmaTop - 18, W, 64);
+  ctx.restore();
+
+  var floatGap = Math.max(6, H * 0.01);
+
+  // Lift ONLY Plate B upward (leave Plate A and the rest of the geometry as-is).
+  // Increase this to move Plate B higher.
+  var PLATE_B_LIFT_PX = Math.max(140, H * 0.24);
+
+  var baseTop = FLOOR_Y - floatGap;
+
+  var A_BELOW_B = Math.max(24, plateH * 0.22);
+  var aTopW = baseTop + p1dy + A_BELOW_B;
+  // Apply lift to Plate B only
+  var bTopW = baseTop + (p2dy - PLATE_B_LIFT_PX);
+  var bTop = bTopW;
+
+  var faultDX = Math.max(26, W * 0.040);
+  var faultDY = plateH * 0.62;
+
+  var fTopX = fX + (p1dx * 0.35 + p2dx * 0.15);
+  var fTopY = aTopW + bendA * 0.12;
+
+  // Expose a stable fault-origin point for visuals (energy rings, etc.)
+  window.__FAULT_ORIGIN = { x: fTopX, y: fTopY };
+
+  var fBotX = fTopX - faultDX;
+  var fBotY = fTopY + faultDY;
+
+  // Plate A (background subducting slab)
+  ctx.save();
+  ctx.translate(p1dx, p1dy + A_BELOW_B);
+
+  var trenchX = fX;
+  var aTopY = baseTop;
+  // Extend Plate A a bit beyond the left edge so it doesn't look cut off.
+  var aLeftX = -Math.max(60, W * 0.08);
+  var aRightX = trenchX;
+
+  var diveX = trenchX + Math.max(70, W * 0.16);
+  var diveY = magmaTop + plateH * 0.32;
+
+  var slabT = Math.max(10, plateH * 0.15);
+  var arcUp = Math.max(6, slabT * 0.22);
+  var bendPx = Math.max(0, bendA);
+
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = dp;
+  ctx.beginPath();
+
+  ctx.moveTo(aLeftX, aTopY);
+  ctx.lineTo(aRightX - Math.max(22, W * 0.024), aTopY);
+
+  var topArcC1X = aRightX + Math.max(16, W * 0.030);
+  var topArcC1Y = aTopY + (arcUp * 1.10) + bendPx * 0.28;
+  var topArcC2X = aRightX + Math.max(80, W * 0.110);
+  var topArcC2Y = aTopY + (arcUp * 2.20) + bendPx * 0.40;
+  var topArcEndY = Math.min(diveY - slabT * 0.35, magmaTop - slabT * 0.65);
+
+  ctx.bezierCurveTo(
+    topArcC1X, topArcC1Y,
+    topArcC2X, topArcC2Y,
+    diveX,
+    topArcEndY
+  );
+
+  ctx.quadraticCurveTo(
+    diveX + Math.max(30, W * 0.05),
+    diveY + slabT * 0.10,
+    diveX + Math.max(80, W * 0.12),
+    diveY + slabT * 0.25
+  );
+
+  var botDiveX = diveX + Math.max(75, W * 0.11);
+  var botDiveY = Math.min(H + 20, diveY + slabT * 0.90);
+
+  ctx.lineTo(botDiveX, botDiveY);
+  ctx.lineTo(aLeftX, magmaTop + slabT * 0.95);
+  ctx.closePath();
+  ctx.fill();
+
+  // Outline for Plate A (red) hugging the slab edge
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.strokeStyle = 'rgba(255,80,80,0.95)';
+  ctx.lineWidth = Math.max(2.5, W * 0.0025);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  ctx.beginPath();
+  ctx.moveTo(aLeftX, aTopY);
+  ctx.lineTo(aRightX - Math.max(22, W * 0.024), aTopY);
+
+  ctx.bezierCurveTo(
+    topArcC1X, topArcC1Y,
+    topArcC2X, topArcC2Y,
+    diveX,
+    topArcEndY
+  );
+
+  ctx.quadraticCurveTo(
+    diveX + Math.max(30, W * 0.05),
+    diveY + slabT * 0.10,
+    diveX + Math.max(80, W * 0.12),
+    diveY + slabT * 0.25
+  );
+
+  ctx.lineTo(botDiveX, botDiveY);
+  ctx.lineTo(aLeftX, magmaTop + slabT * 0.95);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.55;
+  var aShade = ctx.createLinearGradient(0, aTopY - 10, 0, magmaTop + slabT + 60);
+  aShade.addColorStop(0, 'rgba(0,0,0,0.10)');
+  aShade.addColorStop(1, 'rgba(0,0,0,0.38)');
+  ctx.fillStyle = aShade;
+  ctx.beginPath();
+  ctx.moveTo(aLeftX, aTopY);
+  ctx.lineTo(aRightX - Math.max(22, W * 0.024), aTopY);
+  ctx.bezierCurveTo(
+    topArcC1X, topArcC1Y,
+    topArcC2X, topArcC2Y,
+    diveX,
+    topArcEndY
+  );
+  ctx.quadraticCurveTo(
+    diveX + Math.max(30, W * 0.05),
+    diveY + slabT * 0.10,
+    diveX + Math.max(80, W * 0.12),
+    diveY + slabT * 0.25
+  );
+  ctx.lineTo(botDiveX, botDiveY);
+  ctx.lineTo(aLeftX, magmaTop + slabT * 0.95);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.20;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.beginPath();
+  ctx.ellipse(diveX + 30, Math.min(H - 8, diveY + slabT * 0.55), Math.max(40, W * 0.08), Math.max(10, slabT * 0.22), 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.font = 'bold 30px monospace';
+  ctx.fillStyle = 'rgba(255,255,255,1)';
+  ctx.textAlign = 'center';
+  ctx.fillText('PLATE A', Math.min(fX * 0.65, W * 0.12), aTopY + 60);
+  ctx.restore();
+
+  ctx.restore();
+
+  // Plate B (merged with crust/shore)
+  var sB = window._slBez || null;
+  var landX2 = (sB && sB.landX) ? sB.landX : (W * 0.90);
+  var deepStartX = (sB && sB.s1sx != null) ? sB.s1sx : (W * DEEP_END);
+
+  var plateBRight = W * 0.915;
+  var plateBInset = Math.max(26, W * 0.045);
+  var bTopX = fTopX + plateBInset;
+  var bBotX = fBotX + plateBInset;
+
+  ctx.save();
+  ctx.translate(p2dx, (p2dy - PLATE_B_LIFT_PX));
+
+  // ---- MANUAL OVERRIDE: if points exist, draw Plate B from them and skip procedural ----
+  var MANUAL_B = (plateBPoints && plateBPoints.length >= 3);
+  if(MANUAL_B){
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = dp;
+
+    // Bend only the trench-edge tip of Plate B, then spring back (bendA goes to 0 during snap).
+    // bendA is computed in updateQuake() for reverse fault.
+    var bPts = bentPlateBPoints(plateBPoints, Math.max(0, bendA) * 0.55);
+
+    ctx.beginPath();
+    ctx.moveTo(bPts[0].x, bPts[0].y);
+    for(var mi=1; mi<bPts.length; mi++){
+      ctx.lineTo(bPts[mi].x, bPts[mi].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.strokeStyle = 'rgba(60,170,255,0.95)';
+    ctx.lineWidth = Math.max(2.5, W * 0.0025);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(bPts[0].x, bPts[0].y);
+    for(var mj=1; mj<bPts.length; mj++){
+      ctx.lineTo(bPts[mj].x, bPts[mj].y);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+
+    var mbShade = ctx.createLinearGradient(0, baseTop - 12, 0, magmaTop + 34);
+    mbShade.addColorStop(0, "rgba(255,255,255,0.04)");
+    mbShade.addColorStop(1, "rgba(0,0,0,0.28)");
+    ctx.fillStyle = mbShade;
+    ctx.globalAlpha = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(bPts[0].x, bPts[0].y);
+    for(var mk=1; mk<bPts.length; mk++){
+      ctx.lineTo(bPts[mk].x, bPts[mk].y);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "rgba(0,0,0,0.55)";
+    ctx.beginPath();
+    ctx.ellipse(W*0.28 + p2dx*0.6, magmaTop + floatGap*0.85, W*0.10, Math.max(10, floatGap*1.6), 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.font = "bold 30px monospace";
+    ctx.fillStyle = "rgba(255,255,255,1)";
+    ctx.textAlign = "center";
+    ctx.fillText("PLATE B", W*0.50 + p2dx, (baseTop + 260) + (p2dy - PLATE_B_LIFT_PX));
+    ctx.restore();
+
+    ctx.restore();
+    return;
+  }
+  // ---- END MANUAL OVERRIDE ----
+
+  ctx.globalAlpha = 0.95;
+  ctx.fillStyle = dp;
+  ctx.beginPath();
+
+  var bTopY = baseTop;
+  ctx.moveTo(bTopX, fTopY);
+  ctx.lineTo(bBotX, fBotY);
+
+  var arcW  = Math.max(54, W * 0.12);
+  var arcH  = Math.max(8,  plateH * 0.16) + Math.max(0, bendA) * 0.06;
+  var arcX1 = fTopX + Math.max(22, W * 0.028);
+  var arcY1 = bTopY - arcH;
+  var arcX2 = fTopX + arcW;
+  var arcY2 = bTopY;
+
+  ctx.quadraticCurveTo(arcX1, arcY1, arcX2, arcY2);
+  ctx.lineTo(Math.min(pBEnd, plateBRight), bTopY);
+
+  ctx.lineTo(Math.max(pBEnd, deepStartX), FLOOR_Y);
+
+  if(sB && sB.s2x2 != null){
+    ctx.bezierCurveTo(sB.s1x1, sB.s1y1, sB.s1x2, sB.s1y2, sB.s1ex, sB.s1ey);
+    ctx.lineTo(sB.shelfX1, sB.shelfY);
+    ctx.bezierCurveTo(sB.s2x1, sB.s2y1, sB.s2x2, sB.s2y2, sB.landX, SEA_Y);
+  } else {
+    ctx.lineTo(landX2, SEA_Y);
+  }
+
+  ctx.lineTo(W, SEA_Y);
+  ctx.lineTo(W, magmaTop);
+  ctx.lineTo(bBotX, magmaTop);
+  ctx.lineTo(bBotX, fBotY);
+
+  ctx.closePath();
+  ctx.fill();
+
+  // Outline for Plate B (blue) hugging the edge
+  ctx.save();
+  ctx.globalAlpha = 0.95;
+  ctx.strokeStyle = 'rgba(60,170,255,0.95)';
+  ctx.lineWidth = Math.max(2.5, W * 0.0025);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+
+  ctx.beginPath();
+  ctx.moveTo(bBotX, fBotY);
+  ctx.lineTo(bTopX, fTopY);
+  ctx.quadraticCurveTo(arcX1, arcY1, arcX2, arcY2);
+  ctx.lineTo(Math.min(pBEnd, plateBRight), bTopY);
+
+  var downX = Math.max(pBEnd, deepStartX);
+  var midX  = pBEnd + (downX - pBEnd) * 0.35;
+  var midY  = bTopY  + (FLOOR_Y - bTopY) * 0.55;
+  ctx.quadraticCurveTo(midX, midY, downX, FLOOR_Y);
+
+  if(sB && sB.s2x2 != null){
+    ctx.bezierCurveTo(sB.s1x1, sB.s1y1, sB.s1x2, sB.s1y2, sB.s1ex, sB.s1ey);
+    ctx.lineTo(sB.shelfX1, sB.shelfY);
+    ctx.bezierCurveTo(sB.s2x1, sB.s2y1, sB.s2x2, sB.s2y2, sB.landX, SEA_Y);
+  } else {
+    ctx.lineTo(landX2, SEA_Y);
+  }
+  ctx.lineTo(W, SEA_Y);
+  ctx.stroke();
+  ctx.restore();
+
+  // shading
+  var bShade = ctx.createLinearGradient(0, bTopY - 12, 0, magmaTop + 34);
+  bShade.addColorStop(0, "rgba(255,255,255,0.04)");
+  bShade.addColorStop(1, "rgba(0,0,0,0.28)");
+  ctx.fillStyle = bShade;
+  ctx.globalAlpha = 0.65;
+
+  ctx.beginPath();
+  ctx.moveTo(bTopX, fTopY);
+  ctx.lineTo(bBotX, fBotY);
+  ctx.quadraticCurveTo(arcX1, arcY1, arcX2, arcY2);
+  ctx.lineTo(Math.min(pBEnd, plateBRight), bTopY);
+  ctx.lineTo(Math.max(pBEnd, deepStartX), FLOOR_Y);
+  if(sB && sB.s2x2 != null){
+    ctx.bezierCurveTo(sB.s1x1, sB.s1y1, sB.s1x2, sB.s1y2, sB.s1ex, sB.s1ey);
+    ctx.lineTo(sB.shelfX1, sB.shelfY);
+    ctx.bezierCurveTo(sB.s2x1, sB.s2y1, sB.s2x2, sB.s2y2, sB.landX, SEA_Y);
+  } else {
+    ctx.lineTo(landX2, SEA_Y);
+  }
+  ctx.lineTo(W, SEA_Y);
+  ctx.lineTo(W, magmaTop);
+  ctx.lineTo(bBotX, magmaTop);
+  ctx.lineTo(bBotX, fBotY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.22;
+  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.beginPath();
+  ctx.ellipse((fX + (pBEnd-fX)*0.55) + p2dx*0.6, magmaTop + floatGap*0.85, (pBEnd-fX)*0.55, Math.max(10, floatGap*1.6), 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.font = "bold 11px monospace";
+  ctx.fillStyle = "rgba(200,225,248,0.80)";
+  ctx.textAlign = "center";
+  ctx.fillText("PLATE B", fX + (pBEnd-fX)*0.5 + p2dx, bTop + 22);
+
+  // Strike-slip proxy: offset surface markers across the fault to show lateral shear.
+  if(S.fault === 'strike-slip' && S.phase >= 1){
+    ctx.save();
+    var fo = window.__FAULT_ORIGIN || {x: fTopX, y: fTopY};
+    var mx0 = fo.x;
+
+    ctx.globalAlpha = 0.95;
+    ctx.lineWidth = Math.max(2.0, W * 0.0022);
+    ctx.lineCap = 'round';
+
+    var y0 = fo.y - Math.max(10, H * 0.018);
+    var seg = Math.max(18, W * 0.022);
+    var gap = Math.max(10, W * 0.010);
+
+    // Left side markers shifted by shearA
+    ctx.strokeStyle = 'rgba(245,245,245,0.85)';
+    for(var m=0; m<4; m++){
+      var yy = y0 + m * Math.max(8, H * 0.012);
+      var x1 = (mx0 - gap - seg) + shearA;
+      var x2 = (mx0 - gap) + shearA;
+      ctx.beginPath();
+      ctx.moveTo(x1, yy);
+      ctx.lineTo(x2, yy);
+      ctx.stroke();
+    }
+
+    // Right side markers shifted by shearB
+    ctx.strokeStyle = 'rgba(245,245,245,0.75)';
+    for(var n=0; n<4; n++){
+      var yy2 = y0 + n * Math.max(8, H * 0.012);
+      var x3 = (mx0 + gap) + shearB;
+      var x4 = (mx0 + gap + seg) + shearB;
+      ctx.beginPath();
+      ctx.moveTo(x3, yy2);
+      ctx.lineTo(x4, yy2);
+      ctx.stroke();
+    }
+
+    // Fault trace for contrast
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+    ctx.setLineDash([6, 7]);
+    ctx.beginPath();
+    ctx.moveTo(mx0, fo.y - Math.max(22, H*0.045));
+    ctx.lineTo(mx0, fo.y + Math.max(52, H*0.11));
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.restore();
+  }
+
+  if(S.phase >= 1){
+    ctx.globalAlpha = Math.min(1, S.qt * 1.5);
+    ctx.strokeStyle = fp.col;
+    ctx.fillStyle = fp.col;
+    ctx.lineWidth = 2.5;
+
+    var bx = fX + (pBEnd-fX)*0.5;
+    var by = bTop + 50;
+
+    if(S.fault === 'strike-slip'){
+      // Opposing shear arrows (clear in side-view)
+      arrowDraw(bx-18, by-2, bx-44, by-2);
+      arrowDraw(bx+18, by+2, bx+44, by+2);
+    } else {
+      if(fp.vS > 0.05){
+        arrowDraw(bx, by-12, bx, by+18*fp.vS);
+      }
+      if(fp.hS > 0.3){
+        arrowDraw(bx+10, by, bx-24*fp.hS, by);
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+// =====================================================
+// PEAK MARKER + LABELS
+// =====================================================
+function drawPeakMarker(){
+  // Persistent PEAK box should remain after shoreline crash.
+  if(S.peakH < 0.25) return;
+
+  ctx.save();
+
+  // --- Persistent peak box (always drawn once peak exists) ---
+  ctx.fillStyle="rgba(0,0,0,0.60)";
+  ctx.fillRect(W-158,7,150,42);
+  ctx.fillStyle="#ffd040";
+  ctx.font="bold 9px monospace";
+  ctx.textAlign="left";
+  ctx.fillText("PEAK WAVE HEIGHT", W-151, 22);
+  ctx.font="bold 15px monospace";
+  ctx.fillText(S.peakH.toFixed(1)+" m", W-151, 41);
+
+  // --- Live crest marker (optional): only while offshore wave exists ---
+  var pi=0, pe=0;
+  for(var i=0;i<N;i++){
+    if(depth[i]>0 && eta[i]>pe){ pe=eta[i]; pi=i; }
+  }
+
+  // If the current offshore crest is tiny (eg after crash), skip the marker
+  // but keep the peak box above.
+  if(pe >= 0.2){
+    var px=cx(pi), py=waveY(pi);
+
+    ctx.strokeStyle="#ffd040";
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(px,SEA_Y); ctx.lineTo(px,py); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle="#000000";
+    ctx.beginPath(); ctx.moveTo(px,py-9); ctx.lineTo(px-7,py); ctx.lineTo(px+7,py); ctx.closePath(); ctx.fill();
+
+    ctx.font="bold 15px monospace";
+    ctx.textAlign="center";
+    ctx.fillStyle="#000000";
+    ctx.fillText(pe.toFixed(1)+"m", px, py-13);
+  }
+
+  ctx.restore();
+}
+
+function drawRuptureFlash(){
+  if(S.phase !== 1 || injected) return;
+  var fp=FAULTS[S.fault];
+  ctx.save();
+  ctx.fillStyle = fp.col+"18";
+  ctx.fillRect(0,0,W,H);
+  var blink = 0.55 + 0.45*Math.sin(Date.now()*0.009);
+  ctx.globalAlpha=blink;
+  ctx.fillStyle=fp.col;
+  ctx.font="bold 16px monospace";
+  ctx.textAlign="center";
+  ctx.fillText("⚡ RUPTURING ⚡", W*0.5, SEA_Y-12);
+  ctx.globalAlpha=1;
+  ctx.restore();
+}
+
+function drawFaultLabel(){
+  var fp=FAULTS[S.fault];
+  ctx.save();
+  ctx.fillStyle="rgba(0,0,0,0.50)";
+  ctx.fillRect(8, H-34, 218, 26);
+  ctx.fillStyle=fp.col;
+  ctx.font="bold 11px monospace";
+  ctx.textAlign="left";
+  ctx.fillText("▶ " + fp.name.toUpperCase(), 14, H-16);
+  ctx.restore();
+}
+
+// =====================================================
+// MAIN DRAW
+// =====================================================
+function draw(){
+  layout();
+  ctx.clearRect(0,0,W,H);
+
+  drawSky();
+  drawGrid();
+  drawTerrain();
+  drawWater();
+  drawFaultZone();
+  drawEnergyRings();      // <-- rings render after fault, before objects
+  drawObjects();
+  drawRunup();
+  drawPeakMarker();
+  drawFaultLabel();
+  drawRuptureFlash();
+  drawPlateBEditorOverlay();
+  drawRuler();
+}
+
+// =====================================================
+// SIM UPDATE
+// =====================================================
+function updateQuake(dt){
+  if(S.phase === 0) return;
+  S.qt += dt;
+
+  if(S.phase === 1){
+    var t = Math.min(1, S.qt/RDUR);
+    var fp = FAULTS[S.fault];
+
+    var spx = S.slip * PPM * 0.45;
+    bendA = 0;
+
+    if(S.fault === "reverse"){
+      shearA = 0; shearB = 0;
+
+      // Converge for most of the timeline, then snap back very abruptly.
+      // (RDUR is 5s, so keeping SNAP window small makes it feel sudden.)
+      var CONV_END = 0.66;  // converge phase ends
+      var SNAP_END = 0.70;  // abrupt snap-back window (shorter = snappier)
+
+      var convT = Math.min(1, t / CONV_END);
+      var snapT = (t <= CONV_END) ? 0 : Math.min(1, (t - CONV_END) / Math.max(0.001, (SNAP_END - CONV_END)));
+
+      var convE = ss(convT);
+      // Use a steeper easing for snap so it releases faster.
+      var snapE = Math.pow(ss(snapT), 0.55);
+
+      // Primary converge distance (in px)
+      var convPx = spx * 0.52;
+
+      // Springy snap-back: slightly longer oscillation + less damping
+      var bounce = 0;
+      if(snapT > 0){
+        bounce = Math.sin(snapT * Math.PI * 6.0) * Math.exp(-3.0 * snapT);
+      }
+
+      // Plate A keeps its converged (subducted) position; it should NOT reset.
+      // Plate B stays horizontally stationary; only its tip bends then springs back (via bendA).
+      var curConv = convPx * convE;
+
+      p1dx = curConv;
+      p2dx = 0;
+
+      p1dy = 0;
+      p2dy = 0;
+
+      // Bend grows during converge (more folding), then releases abruptly during snap.
+      // Keep bending concentrated near the trench edge via the plate draw code.
+      var bendGrow = ss(Math.max(0, Math.min(1, (t - 0.10) / (CONV_END - 0.10))));
+      // Increase folding strength for emphasis
+      var baseBend = (spx * 2.05) * bendGrow * (1 - snapE);
+      // A springy whip during snap
+      var whip     = (spx * 0.90) * bounce;
+      bendA = baseBend - whip;
+
+      // Add a short post-release spring so Plate B keeps wobbling briefly after snap.
+      if(snapT > 0){
+        var post = Math.sin(snapT * Math.PI * 4.0) * Math.exp(-2.4 * snapT);
+        bendA += (spx * 0.22) * post;
+      }
+
+      // Inject wave ONLY after the spring-back finishes (end of snap),
+      // so the wave spawns right after the plate snaps back.
+      if(t >= SNAP_END && !injected){
+        injected = true;
+        injectUplift(S.slip * fp.vS * 1.0);
+        // Kick off a springy settle for Plate B after the snap.
+        S.bSpringT = 0;
+        S.bSpringAmp = spx * 0.55;
+
+        // Seamless handoff
+        S.phase = 2;
+        S.qt = 0;
+
+        // Advance the wave immediately this frame so it doesn't feel delayed.
+        simStep(dt);
+        for(var ii=0; ii<N; ii++){
+          if(depth[ii] > 0 && eta[ii] > S.peakH) S.peakH = eta[ii];
+          if(depth[ii] <= 0 && etaLand[ii] > S.peakH) S.peakH = etaLand[ii];
+        }
+        return;
+      }
+    } else {
+      var e = (t < 0.5) ? 2*t*t : -1 + (4-2*t)*t;
+
+      if(S.fault === "normal"){
+        shearA = 0; shearB = 0;
+
+        // NORMAL FAULT: diverge (Plate A slides left, Plate B stays stationary)
+        // No subsidence DURING plate movement; delay droop until AFTER motion to sync with drawdown
+        var sepPx = spx * 0.70; // tweak for stronger/weaker divergence
+        p1dx = -e * sepPx;
+        p2dx = 0;
+        p1dy = 0;
+        p2dy = 0;
+        bendA = 0;
+      } else if(S.fault === "strike-slip"){
+        // STRIKE-SLIP (side-view proxy): motion is mostly into/out of screen.
+        // Keep plate geometry stable; show shear by offsetting markers.
+        p1dx = 0; p2dx = 0;
+        p1dy = 0; p2dy = 0;
+
+        var sh = spx * fp.hS * 0.95;
+        shearA = -e * sh;
+        shearB =  e * sh;
+
+        // No tsunami injection for pure strike-slip
+        bendA = 0;
+      } else {
+        // Default behavior for other non-reverse modes
+        shearA = 0; shearB = 0;
+        p1dy = -e * spx * fp.vS;
+        p2dy =  e * spx * fp.vS * 0.3;
+        p1dx = -e * spx * fp.hS * 0.35;
+        p2dx =  e * spx * fp.hS * 0.35;
+      }
+
+      // Only inject uplift for modes that have vertical displacement
+      if(S.fault !== "normal" && S.fault !== "strike-slip" && t >= 0.45 && !injected){
+        injected = true;
+        injectUplift(S.slip * fp.vS * 1.0);
+      }
+    }
+
+    if(t >= 1.0){
+      // For NORMAL fault, generate the wave at the end of plate separation
+      if(S.fault === "normal" && !injected){
+        injected = true;
+        injectUplift(S.slip * fp.vS * 1.0);
+      }
+
+      S.phase = 2;
+      S.qt = 0;
+
+      // NORMAL FAULT: start Plate B subsidence AFTER plate motion completes
+      if(S.fault === "normal"){
+        S.nSubsT = 0;
+        S.nSubsAmp = spx * 0.95;
+        S.nSubsActive = true;
+        bendA = 0;
+      }
+
+      // Start deferred rings now so they sync with post-motion wave timing.
+      if(S.ringsPending){
+        S.ringsPending = false;
+        spawnEnergyRings();
+      }
+    }
+  }
+
+  if(S.phase === 2){
+    // NORMAL FAULT: delayed subsidence after Plate A has moved away.
+    // Ramp down quickly (sync with drawdown), then HOLD (no spring back).
+    if(S.fault === "normal" && S.nSubsActive){
+      S.nSubsT += dt;
+      var dur = 0.70; // seconds to settle into subsidence
+      var u = Math.min(1, S.nSubsT / dur);
+      bendA = S.nSubsAmp * ss(u);
+      if(u >= 1){
+        S.nSubsActive = false; // stop updating, keep bendA held at final value
+      }
+    }
+
+    // Springy settle for Plate B after reverse-fault snap-back
+    if(S.fault === "reverse" && S.bSpringAmp > 0){
+      S.bSpringT += dt;
+      var tt = S.bSpringT;
+      // Damped oscillation around 0 bend
+      bendA = (S.bSpringAmp) * Math.sin(tt * Math.PI * 5.2) * Math.exp(-3.2 * tt);
+      // Stop once tiny
+      if(Math.abs(bendA) < 0.25) {
+        bendA = 0;
+        S.bSpringAmp = 0;
+      }
+    }
+
+    // Strike-slip: keep shear markers frozen after motion ends (optional).
+    // Here we just leave shearA/shearB as-is from phase 1.
+
+    simStep(dt);
+    for(var i=0;i<N;i++){
+      if(depth[i] > 0 && eta[i] > S.peakH) S.peakH = eta[i];
+      if(depth[i] <= 0 && etaLand[i] > S.peakH) S.peakH = etaLand[i];
+    }
+  }
+}
+
+// =====================================================
+// LOOP
+// =====================================================
+function loop(ts){
+  var dt = (ts - S.lastTs)/1000;
+  S.lastTs = ts;
+  if(dt > 0.08) dt = 0.08;
+  S.lastDt = dt;
+
+  updateQuake(dt);
+  updateObjects(dt);
+  draw();
+
+  document.getElementById("i-fault").textContent = FAULTS[S.fault].name.toUpperCase();
+  document.getElementById("i-slip").textContent  = S.slip.toFixed(1) + " m";
+  document.getElementById("i-wave").textContent  = S.peakH.toFixed(1) + " m";
+
+  requestAnimationFrame(loop);
+}
+
+// =====================================================
+// RESIZE + UI
+// =====================================================
+function resize(){
+  var cont = document.getElementById("canvas-container");
+  CV.width  = cont.clientWidth;
+  CV.height = cont.clientHeight;
+  _dp = null;
+  layout();
+  buildBathy();
+  // Always load saved Plate B; if none exists, fall back to baked/default points.
+  loadPlateBFromStorage();
+  initObjects();
+}
+
+document.querySelectorAll(".fault-tile").forEach(function(tile){
+  tile.addEventListener("click", function(){
+    if(S.triggered) return;
+    document.querySelectorAll(".fault-tile").forEach(function(t){ t.classList.remove("active"); });
+    tile.classList.add("active");
+    S.fault = tile.dataset.fault;
+  });
+});
+
+var slipEl = document.getElementById("slip");
+var svalEl = document.getElementById("sval");
+
+slipEl.addEventListener("input", function(){
+  S.slip = parseFloat(slipEl.value);
+  svalEl.textContent = S.slip.toFixed(1) + " m";
+  slipEl.style.setProperty("--p", ((S.slip-1)/9*100).toFixed(1) + "%");
+});
+
+document.getElementById("btn-trigger").addEventListener("click", function(){
+  if(S.triggered) return;
+  S.triggered = true;
+  S.phase = 1;
+  S.qt = 0;
+  injected = false;
+  S.ringsPending = false;
+  S.peakH = 0;
+  bendA = 0;
+  shearA = 0; shearB = 0;
+
+  S.bSpringT = 0;
+  S.bSpringAmp = 0;
+  S.nSubsT = 0;
+  S.nSubsAmp = 0;
+  S.nSubsActive = false;
+
+  initObjects();
+
+  document.getElementById("btn-trigger").disabled = true;
+  document.querySelectorAll(".fault-tile").forEach(function(t){ t.style.pointerEvents = "none"; });
+});
+
+document.getElementById("btn-reset").addEventListener("click", function(){
+  S.triggered=false;
+  S.phase=0;
+  S.qt=0;
+  S.peakH=0;
+
+  p1dy=p2dy=p1dx=p2dx=0;
+  bendA=0;
+  shearA = 0; shearB = 0;
+
+  injected=false;
+  S.ringsPending = false;
+  S.bSpringT = 0;
+  S.bSpringAmp = 0;
+  S.nSubsT = 0;
+  S.nSubsAmp = 0;
+  S.nSubsActive = false;
+
+  initObjects();
+  resetPulse();
+
+  document.getElementById("btn-trigger").disabled=false;
+  document.querySelectorAll(".fault-tile").forEach(function(t){ t.style.pointerEvents=""; });
+});
+
+window.addEventListener("resize", resize);
+
+// INIT
+resize();
+slipEl.dispatchEvent(new Event("input"));
+S.lastTs = performance.now();
+requestAnimationFrame(loop);
+
+}catch(e){
+  var ov=document.getElementById("error-overlay");
+  document.getElementById("errmsg").textContent = e.stack || e.message;
+  ov.classList.add("show");
+}
+window.addEventListener("error", function(ev){
+  var ov=document.getElementById("error-overlay");
+  document.getElementById("errmsg").textContent = (ev.error && ev.error.stack) || ev.message;
+  ov.classList.add("show");
+});
+})();
+</script>
+
+</body></html>
